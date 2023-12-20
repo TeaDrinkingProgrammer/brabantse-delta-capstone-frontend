@@ -2,7 +2,7 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Dash, html, dcc
 
-app = Dash(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = Dash(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 
 # Sidebar setup
 sidebar = dbc.Nav(
@@ -17,6 +17,7 @@ sidebar = dbc.Nav(
             className="sidebar-header",
         ),
         # Navigation links - wrapped in a list
+        html.I(className="bi bi-info-circle-fill me-2"),
         *[dbc.NavLink(f"{page['name']}", href=page["relative_path"]) for page in dash.page_registry.values()]
     ],
     vertical=True,
