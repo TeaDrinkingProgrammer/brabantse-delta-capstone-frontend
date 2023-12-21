@@ -11,35 +11,39 @@ from datetime import datetime, timedelta
 # Corrected function to calculate rainfall for the previous 2 hours for each record
 def calculate_rainfall_previous_2_hours_corrected(df):
     # Set the index to the time for rolling window calculations
-    df = df.set_index('time')
-    
-    #for loop 
+    df = df.set_index("time")
+
+    # for loop
     for i in range(0, len(df)):
-        #get the rainfall of 8 records before the current record before the current record, if out of range, set to 0  
+        # get the rainfall of 8 records before the current record before the current record, if out of range, set to 0
         if i < 8:
-            df.loc[df.index[i], 'rainfall_previous_2_hours'] = 0
+            df.loc[df.index[i], "rainfall_previous_2_hours"] = 0
         else:
-            df.loc[df.index[i], 'rainfall_previous_2_hours'] = df.loc[df.index[i-8], 'precipitation']
-        
-    #reset the index
+            df.loc[df.index[i], "rainfall_previous_2_hours"] = df.loc[
+                df.index[i - 8], "precipitation"
+            ]
+
+    # reset the index
     df = df.reset_index()
-    
+
     return df
 
-#drop the first day of the df (yessterday's data)
+
+# drop the first day of the df (yessterday's data)
 def drop_first_day(df):
     df = df[96:]
     return df
 
+
 def init_lag_features(df, model, scaler):
     # Initialize the lag features with default values
     default_value = 0  # Replace with a sensible default if applicable
-    df['percentage_previous_1'] = default_value
-    df['percentage_previous_2'] = default_value
-    df['percentage_previous_3'] = default_value
-    df['percentage_previous_4'] = default_value
-    df['percentage_previous_5'] = default_value
-    df['percentage_previous_6'] = default_value
+    df["percentage_previous_1"] = default_value
+    df["percentage_previous_2"] = default_value
+    df["percentage_previous_3"] = default_value
+    df["percentage_previous_4"] = default_value
+    df["percentage_previous_5"] = default_value
+    df["percentage_previous_6"] = default_value
 
     # Iterate through the DataFrame and predict the percentage for each record
     for index, row in df.iterrows():
@@ -51,17 +55,27 @@ def init_lag_features(df, model, scaler):
 
         # Update the lag features for the next record
         if index + 1 < len(df):
-            df.loc[index + 1, 'percentage_previous_1'] = predicted_percentage
+            df.loc[index + 1, "percentage_previous_1"] = predicted_percentage
             if index + 1 >= 2:
-                df.loc[index + 1, 'percentage_previous_2'] = df.loc[index, 'percentage_previous_1']
+                df.loc[index + 1, "percentage_previous_2"] = df.loc[
+                    index, "percentage_previous_1"
+                ]
             if index + 1 >= 3:
-                df.loc[index + 1, 'percentage_previous_3'] = df.loc[index, 'percentage_previous_2']
+                df.loc[index + 1, "percentage_previous_3"] = df.loc[
+                    index, "percentage_previous_2"
+                ]
             if index + 1 >= 4:
-                df.loc[index + 1, 'percentage_previous_4'] = df.loc[index, 'percentage_previous_3']
+                df.loc[index + 1, "percentage_previous_4"] = df.loc[
+                    index, "percentage_previous_3"
+                ]
             if index + 1 >= 5:
-                df.loc[index + 1, 'percentage_previous_5'] = df.loc[index, 'percentage_previous_4']
+                df.loc[index + 1, "percentage_previous_5"] = df.loc[
+                    index, "percentage_previous_4"
+                ]
             if index + 1 >= 6:
-                df.loc[index + 1, 'percentage_previous_6'] = df.loc[index, 'percentage_previous_5']
+                df.loc[index + 1, "percentage_previous_6"] = df.loc[
+                    index, "percentage_previous_5"
+                ]
 
     return df
 
@@ -76,86 +90,94 @@ dash.register_page(
 
 
 # Load the scaler and the model from the pickle files
-scaler_file = './data/scaler.pkl'
-model_file = './data/model_randomforest_14.pkl'
+scaler_file = "./data/scaler.pkl"
+model_file = "./data/model_randomforest_14.pkl"
 
-with open(scaler_file, 'rb') as file:
+with open(scaler_file, "rb") as file:
     scaler = pickle.load(file)
 
-with open(model_file, 'rb') as file:
+with open(model_file, "rb") as file:
     model = pickle.load(file)
 
 scaler, model
 
 
 # Dash layout
-layout = html.Div([
-    # Add a dcc.Store to your layout to share data between callbacks
-    dcc.Store(id='shared-data'),
+layout = html.Div(
+    [
+        # Add a dcc.Store to your layout to share data between callbacks
+        dcc.Store(id="shared-data"),
+        dcc.Store(id="api-data"),
+        dmc.Button("Download Table Data", id="btn_csv"),
+        dcc.Download(id="download-dataframe-csv"),
+        dmc.Space(h=10),
+        dcc.Dropdown(
+            id="dropdown",
+            options=[
+                {"label": "1 dag", "value": "1"},
+                {"label": "3 dagen", "value": "3"},
+                {"label": "7 dagen", "value": "7"},
+                {"label": "14 dagen", "value": "14"},
+                {"label": "16 dagen", "value": "16"},
+            ],
+            value="3",
+        ),
 
-    dmc.Button("Download Table Data", id="btn_csv"),
-    dcc.Download(id="download-dataframe-csv"),
-    dmc.Space(h=10),
-
-    dcc.Dropdown(
-        id='dropdown',
-        options=[
-            {'label': '1 dag', 'value': '1'},
-            {'label': '3 dagen', 'value': '3'},
-            {'label': '7 dagen', 'value': '7'},
-            {'label': '14 dagen', 'value': '14'},
-            {'label': '16 dagen', 'value': '16'},
-        ],
-        value='3'
-    ),
-    dcc.Loading(
+        dcc.Loading(
             id="loading-new",
             type="default",
-            children=[dcc.Graph(id="forecast-graph")],
-    ),
-])
+            children=[dcc.Graph(id="forecast-graph"), dcc.Graph(id="day-graph")],
+        ),
+    ]
+)
+
 
 # Callback for the download button to use the data from the store for downloading
 @callback(
-    Output('download-dataframe-csv', 'data'),
-    Input('btn_csv', 'n_clicks'),  # Replace 'download-button' with the actual ID of your download button
-    State('shared-data', 'data')           # The stored JSON data
+    Output("download-dataframe-csv", "data"),
+    Input(
+        "btn_csv", "n_clicks"
+    ),  # Replace 'download-button' with the actual ID of your download button
+    State("shared-data", "data"),  # The stored JSON data
 )
 def download_data(n_clicks, data):
     if n_clicks is None or data is None:
         # Prevent download from being triggered on page load or if there is no data
         raise dash.exceptions.PreventUpdate
-    df = pd.read_json(data, orient='split')
-    return dcc.send_data_frame(df.to_csv, filename='data.csv')
+    df = pd.read_json(data, orient="split")
+    return dcc.send_data_frame(df.to_csv, filename="data.csv")
+
 
 @callback(
-    Output('forecast-graph', 'figure'),
-    Output('shared-data', 'data'),
-    Input('dropdown', 'value')
+    Output("forecast-graph", "figure"),
+    Output("shared-data", "data"),
+    Input("dropdown", "value"),
 )
 def update_graph(day):
     # Fetch data from the API
-    url = f'https://api.open-meteo.com/v1/forecast?latitude=51.55202&longitude=4.586668&minutely_15=precipitation&past_days=1&forecast_days={day}'
+    url = f"https://api.open-meteo.com/v1/forecast?latitude=51.55202&longitude=4.586668&minutely_15=precipitation&past_days=1&forecast_days={day}"
     response = requests.get(url)
     data = response.json() if response.status_code == 200 else {}
 
     # Prepare the DataFrame from API data
     if data:
         # Extract minutely_15 data
-        minutely_data = data['minutely_15']
+        minutely_data = data["minutely_15"]
 
         # Create DataFrame from the extracted data
-        df = pd.DataFrame({
-            'time': pd.to_datetime(minutely_data['time']),
-            'precipitation': minutely_data['precipitation']
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(minutely_data["time"]),
+                "precipitation": minutely_data["precipitation"],
+            }
+        )
 
         # Add columns for 'day', 'month', 'dayofweek', 'hour', 'rainfall_current'
-        df['day'] = df['time'].dt.day
-        df['month'] = df['time'].dt.month
-        df['dayofweek'] = df['time'].dt.dayofweek
-        df['hour'] = df['time'].dt.hour
-        df['rainfall_current'] = df['precipitation']
+        df["day"] = df["time"].dt.day
+        df["month"] = df["time"].dt.month
+        df["dayofweek"] = df["time"].dt.dayofweek
+        df["hour"] = df["time"].dt.hour
+        df["rainfall_current"] = df["precipitation"]
 
         # Calculate rainfall for 2 hours ago
         df = calculate_rainfall_previous_2_hours_corrected(df)
@@ -163,8 +185,8 @@ def update_graph(day):
         df_copy = df.copy()
 
         # Drop time
-        df = df.drop(columns=['time'])
-        df = df.drop(columns=['precipitation'])
+        df = df.drop(columns=["time"])
+        df = df.drop(columns=["precipitation"])
 
         # Initialize the lag features
         df = init_lag_features(df, model, scaler)
@@ -179,7 +201,7 @@ def update_graph(day):
                 x=df_copy["time"],
                 y=results,
                 mode="lines",
-                name="Capacity Percentage (%)"
+                name="Capacity Percentage (%)",
             )
         )
 
@@ -211,10 +233,46 @@ def update_graph(day):
         )
 
         # Add the time column, precipitation column and the results column to a new variable named data
-        data = df_copy[['time', 'precipitation']]
-        data['results'] = results
+        data = df_copy[["time", "precipitation"]]
+        data["results"] = results
 
-        return fig, data.to_json(date_format='iso', orient='split')  # Return the figure and the DataFrame as JSON
+        return fig, data.to_json(
+            date_format="iso", orient="split"
+        )  # Return the figure and the DataFrame as JSON
     else:
         return go.Figure()  # Return an empty figure if data is not available
 
+
+@callback(
+    Output("day-graph", "figure"),
+    Input("dropdown", "value"),
+)
+def update_day_graph(day):
+    # Fetch data from the API
+    url = f"https://api.open-meteo.com/v1/forecast?latitude=51.55202&longitude=4.586668&daily=precipitation_sum&timezone=Europe%2FBerlin&forecast_days={day}"
+    response = requests.get(url)
+    data = response.json() if response.status_code == 200 else {}
+
+    # Prepare the DataFrame from API data
+    if data:
+       # bar plot the data
+        df = pd.DataFrame(data["daily"])
+        df["time"] = pd.to_datetime(df["time"])
+        df = df.set_index("time")
+        df = df.resample("D").sum()
+        df = df.reset_index()
+        fig = go.Figure()
+        fig.add_trace(
+            go.Bar(
+                x=df["time"],
+                y=df["precipitation_sum"],
+                name="Rainfall (mm)",
+            )
+        )
+        fig.update_layout(
+            yaxis=dict(title="Rainfall (mm)"),
+            hovermode="x unified",
+        )
+        return fig
+    else:
+        return go.Figure()  # Return an empty figure if data is not available
