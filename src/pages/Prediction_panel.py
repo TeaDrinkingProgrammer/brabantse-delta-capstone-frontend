@@ -1,66 +1,46 @@
 import grequests
 import dash
-from dash import Dash, html, dcc, Input, Output, callback
+from dash import html, dcc, Input, Output, callback
 import pandas as pd
 import plotly.graph_objects as go
 import pickle
-from datetime import datetime, timedelta
 import time
+import numpy as np
+import asyncio
+import plotly.express as px
 
-# Corrected function to calculate rainfall for the previous 2 hours for each record
 def calculate_rainfall_previous_2_hours_corrected(df):
     # Set the index to the time for rolling window calculations
     df = df.set_index('time')
     
-    #for loop 
-    for i in range(0, len(df)):
-        #get the rainfall of 8 records before the current record before the current record, if out of range, set to 0  
-        if i < 8:
-            df.loc[df.index[i], 'rainfall_previous_2_hours'] = 0
-        else:
-            df.loc[df.index[i], 'rainfall_previous_2_hours'] = df.loc[df.index[i-8], 'precipitation']
-        
-    #reset the index
+    # get the rainfall of 8 records before the current record before the current record, if out of range, set to 0  
+    df['rainfall_previous_2_hours'] = 0
+    df['rainfall_previous_2_hours'].iloc[8:] = df['precipitation'].iloc[:-8].values
+    
+    # Reset the index
     df = df.reset_index()
     
     return df
 
-#drop the first day of the df (yessterday's data)
+# drop the first day of the df (yessterday's data)
 def drop_first_day(df):
     df = df[96:]
     return df
 
-def init_lag_features(df, model, scaler):
-    # Initialize the lag features with default values
+def initialize_and_update_lag_features(df, model, scaler):
+    # Vectorized initialization of lag features
     default_value = 0  # Replace with a sensible default if applicable
-    df['percentage_previous_1'] = default_value
-    df['percentage_previous_2'] = default_value
-    df['percentage_previous_3'] = default_value
-    df['percentage_previous_4'] = default_value
-    df['percentage_previous_5'] = default_value
-    df['percentage_previous_6'] = default_value
+    lag_columns = [f'percentage_previous_{i}' for i in range(1, 7)]
+    df[lag_columns] = default_value
 
-    # Iterate through the DataFrame and predict the percentage for each record
-    for index, row in df.iterrows():
-        # Scale the entire row
-        scaled_row = scaler.transform([row.values])
+    # Vectorized prediction and lag update
+    scaled_df = scaler.transform(df.values)
+    predicted_percentages = model.predict(scaled_df)
 
-        # Predict using the model
-        predicted_percentage = model.predict(scaled_row)[0]
-
-        # Update the lag features for the next record
-        if index + 1 < len(df):
-            df.loc[index + 1, 'percentage_previous_1'] = predicted_percentage
-            if index + 1 >= 2:
-                df.loc[index + 1, 'percentage_previous_2'] = df.loc[index, 'percentage_previous_1']
-            if index + 1 >= 3:
-                df.loc[index + 1, 'percentage_previous_3'] = df.loc[index, 'percentage_previous_2']
-            if index + 1 >= 4:
-                df.loc[index + 1, 'percentage_previous_4'] = df.loc[index, 'percentage_previous_3']
-            if index + 1 >= 5:
-                df.loc[index + 1, 'percentage_previous_5'] = df.loc[index, 'percentage_previous_4']
-            if index + 1 >= 6:
-                df.loc[index + 1, 'percentage_previous_6'] = df.loc[index, 'percentage_previous_5']
+    for i in range(1, 7):
+        df[f'percentage_previous_{i}'] = predicted_percentages
+        predicted_percentages = np.roll(predicted_percentages, shift=1)
+        df[f'percentage_previous_{i}'].iloc[0] = default_value
 
     return df
 
@@ -126,7 +106,6 @@ def update_graph(day):
     
     # Check if the response is successful
     data = responses[0].json() if responses[0] and responses[0].status_code == 200 else {}
-    print(data)
 
     # Prepare the DataFrame from API data
     if data:
@@ -149,22 +128,20 @@ def update_graph(day):
         # Calculate rainfall for 2 hours ago
         df = calculate_rainfall_previous_2_hours_corrected(df)
         df = drop_first_day(df)
-        df_copy = df.copy()
 
-        # Drop time
-        df = df.drop(columns=['time'])
-        df = df.drop(columns=['precipitation'])
+        filtered_df = df.loc[:, ~df.columns.isin(['time', 'precipitation'])]
 
-        # Initialize the lag features
-        df = init_lag_features(df, model, scaler)
-        results = model.predict(df)
+
+        # Filter out time and precipitation columns and initialize the lag features
+        filtered_df = initialize_and_update_lag_features(filtered_df, model, scaler)
+        results = model.predict(filtered_df)
 
         df_time = time.time()
 
         # Add line for percentage_current
         fig.add_trace(
             go.Scatter(
-                x=df_copy["time"],
+                x=df["time"],
                 y=results,
                 mode="lines",
                 name="Capacity Percentage (%)"
@@ -174,8 +151,8 @@ def update_graph(day):
         # Add line for rainfall_current
         fig.add_trace(
             go.Scatter(
-                x=df_copy["time"],
-                y=df["rainfall_current"],
+                x=df["time"],
+                y=filtered_df["rainfall_current"],
                 mode="lines",
                 name="Rainfall (mm)",
                 yaxis="y2",
