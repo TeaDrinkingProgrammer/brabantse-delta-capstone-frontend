@@ -1,11 +1,11 @@
+import grequests
 import dash
 from dash import Dash, html, dcc, Input, Output, callback
 import pandas as pd
 import plotly.graph_objects as go
-import requests
 import pickle
 from datetime import datetime, timedelta
-
+import time
 
 # Corrected function to calculate rainfall for the previous 2 hours for each record
 def calculate_rainfall_previous_2_hours_corrected(df):
@@ -107,15 +107,26 @@ layout = html.Div([
     ),
 ])
 
+def fetch_data(day):
+    url = f'https://api.open-meteo.com/v1/forecast?latitude=51.55202&longitude=4.586668&minutely_15=precipitation&past_days=1&forecast_days={day}'
+    return grequests.get(url)
+
 @callback(
     Output('forecast-graph', 'figure'),
     Input('dropdown', 'value')
 )
 def update_graph(day):
-    # Fetch data from the API
-    url = f'https://api.open-meteo.com/v1/forecast?latitude=51.55202&longitude=4.586668&minutely_15=precipitation&past_days=1&forecast_days={day}'
-    response = requests.get(url)
-    data = response.json() if response.status_code == 200 else {}
+    
+    start_time = time.time()
+    # Use grequests to send asynchronous requests
+    responses = grequests.map([fetch_data(day)])
+    
+    # Create Plotly figure
+    fig = go.Figure()
+    
+    # Check if the response is successful
+    data = responses[0].json() if responses[0] and responses[0].status_code == 200 else {}
+    print(data)
 
     # Prepare the DataFrame from API data
     if data:
@@ -148,8 +159,7 @@ def update_graph(day):
         df = init_lag_features(df, model, scaler)
         results = model.predict(df)
 
-        # Create Plotly figure
-        fig = go.Figure()
+        df_time = time.time()
 
         # Add line for percentage_current
         fig.add_trace(
@@ -187,8 +197,15 @@ def update_graph(day):
                 ),
             ),
         )
-
+        end_time = time.time()
+        
+        execution_time = end_time - start_time
+        df_time_measurement = df_time - start_time
+        print(f"Execution time total: {execution_time} seconds")
+        print(f"Execution time df: {df_time_measurement} seconds")
+        
         return fig
+
     else:
         return go.Figure()  # Return an empty figure if data is not available
 
