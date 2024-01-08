@@ -1,4 +1,3 @@
-import grequests
 import dash
 from dash import html, dcc, Input, Output, callback
 import pandas as pd
@@ -6,8 +5,7 @@ import plotly.graph_objects as go
 import pickle
 import time
 import numpy as np
-import asyncio
-import plotly.express as px
+import requests
 
 def calculate_rainfall_previous_2_hours_corrected(df):
     # Set the index to the time for rolling window calculations
@@ -89,7 +87,11 @@ layout = html.Div([
 
 def fetch_data(day):
     url = f'https://api.open-meteo.com/v1/forecast?latitude=51.55202&longitude=4.586668&minutely_15=precipitation&past_days=1&forecast_days={day}'
-    return grequests.get(url)
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    return None
+
 
 @callback(
     Output('forecast-graph', 'figure'),
@@ -98,15 +100,13 @@ def fetch_data(day):
 def update_graph(day):
     
     start_time = time.time()
-    # Use grequests to send asynchronous requests
-    responses = grequests.map([fetch_data(day)])
+
+    # Use synchronous requests for data fetching
+    data = fetch_data(day)
     
     # Create Plotly figure
     fig = go.Figure()
     
-    # Check if the response is successful
-    data = responses[0].json() if responses[0] and responses[0].status_code == 200 else {}
-
     # Prepare the DataFrame from API data
     if data:
         # Extract minutely_15 data
