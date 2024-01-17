@@ -4,8 +4,7 @@ import dash_mantine_components as dmc
 import pandas as pd
 import plotly.graph_objects as go
 import requests
-import pickle
-from datetime import datetime, timedelta, date
+from datetime import date
 
 # Register new page
 dash.register_page(

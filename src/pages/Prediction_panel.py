@@ -4,8 +4,6 @@ import dash_mantine_components as dmc
 import pandas as pd
 import plotly.graph_objects as go
 import requests
-import pickle
-from datetime import datetime, timedelta, date
 
 # Register new page
 dash.register_page(
@@ -14,20 +12,6 @@ dash.register_page(
     title="Prediction Forecast",
     name="Prediction panel",
 )
-
-
-# Load the scaler and the model from the pickle files
-scaler_file = "./data/scaler.pkl"
-model_file = "./data/model_randomforest_14.pkl"
-
-with open(scaler_file, "rb") as file:
-    scaler = pickle.load(file)
-
-with open(model_file, "rb") as file:
-    model = pickle.load(file)
-
-scaler, model
-
 
 # Dash layout
 layout = html.Div(
