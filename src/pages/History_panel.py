@@ -10,90 +10,53 @@ from datetime import datetime, timedelta, date
 # Register new page
 dash.register_page(
     __name__,
-    path="/Prediction_panel",
-    title="Prediction Forecast",
-    name="Prediction panel",
+    path="/History_panel",
+    title="History panel",
+    name="History panel",
 )
-
-
-# Load the scaler and the model from the pickle files
-scaler_file = "./data/scaler.pkl"
-model_file = "./data/model_randomforest_14.pkl"
-
-with open(scaler_file, "rb") as file:
-    scaler = pickle.load(file)
-
-with open(model_file, "rb") as file:
-    model = pickle.load(file)
-
-scaler, model
-
 
 # Dash layout
 layout = html.Div(
     [
         # Add a dcc.Store to your layout to share data between callbacks
-        dcc.Store(id="shared-data"),
-        dcc.Store(id="api-data"),
-        dmc.Button("Download Table Data", id="btn_csv"),
-        dcc.Download(id="download-dataframe-csv"),
+        html.H1(children="Geschiedenis paneel", style={"textAlign": "center"}),
+        html.Hr(),
         dmc.Space(h=10),
-        dcc.Dropdown(
-            id="dropdown",
-            options=[
-                {"label": "1 dag", "value": "1"},
-                {"label": "3 dagen", "value": "3"},
-                {"label": "7 dagen", "value": "7"},
-                {"label": "14 dagen", "value": "14"},
-                {"label": "16 dagen", "value": "16"},
-            ],
-            value="3",
+        dcc.DatePickerSingle(
+            id='my-date-picker-single',
+            min_date_allowed=date(2020, 8, 5),
+            max_date_allowed=date(2023, 9, 19),
+            initial_visible_month=date(2023, 8, 5),
+            date=date(2023, 8, 25)
         ),
 
         dcc.Loading(
             id="loading-new",
             type="default",
-            children=[dcc.Graph(id="forecast-graph")],
+            children=[dcc.Graph(id="day-graph")],
         ),
     ]
 )
 
 
-# Callback for the download button to use the data from the store for downloading
 @callback(
-    Output("download-dataframe-csv", "data"),
-    Input(
-        "btn_csv", "n_clicks"
-    ),  # Replace 'download-button' with the actual ID of your download button
-    State("shared-data", "data"),  # The stored JSON data
+    Output("day-graph", "figure"),
+    Input('my-date-picker-single', 'date')
 )
-def download_data(n_clicks, data):
-    if n_clicks is None or data is None:
-        # Prevent download from being triggered on page load or if there is no data
-        raise dash.exceptions.PreventUpdate
-    df = pd.read_json(data, orient="split")
-    return dcc.send_data_frame(df.to_csv, filename="data.csv")
-
-
-@callback(
-    Output("forecast-graph", "figure"),
-    Output("shared-data", "data"),
-    Input("dropdown", "value"),
-)
-def update_graph(day):
+def update_day_graph(date_value):
     # Fetch data from the API
-    url = "http://127.0.0.1:5000/data/predict"
-    response = requests.post(url, json={"days": day})
+    url = "http://127.0.0.1:5000/data/day_data"
+    response = requests.post(url, json={"date": date_value})
     data = response.json() if response.status_code == 200 else {}
 
     # Prepare the DataFrame from API data
     if data:
-        # Create DataFrame from the extracted data
+       # Create DataFrame from the extracted data
         df = pd.DataFrame(
             {
                 "time": pd.to_datetime(data["timestamps"]),
                 "precipitation": data["precipitation"],
-                "results": data["predictions"],
+                "results": data["percentage"],
             }
         )
 
@@ -141,10 +104,6 @@ def update_graph(day):
         data = df[["time", "precipitation"]]
         data["results"] = df["results"]
 
-        return fig, data.to_json(
-            date_format="iso", orient="split"
-        )  # Return the figure and the DataFrame as JSON
+        return fig
     else:
         return go.Figure()  # Return an empty figure if data is not available
-
-
